@@ -353,21 +353,25 @@ class BotService:
                 """Run the bot in a thread with automatic restart on failure."""
                 max_retries = 5
                 retry_count = 0
+                import time
                 
                 while retry_count < max_retries:
+                    # Check if bot should still be running
+                    if bot_id not in self.bots or bot_id not in self.running_bots:
+                        logger.info(f"Bot {bot.name} ({bot_id}) was removed or stopped. Exiting polling loop.")
+                        break
+                    
                     try:
                         logger.info(f"Starting polling for bot {bot.name} ({bot_id}) - Attempt {retry_count + 1}/{max_retries}")
-                        tb.infinity_polling(none_stop=True, interval=0, timeout=20, long_polling_timeout=20)
+                        # Use skip_pending to avoid processing old updates
+                        tb.infinity_polling(none_stop=True, interval=0, timeout=20, long_polling_timeout=20, skip_pending=True)
+                        # If we exit polling normally (not due to exception), break
+                        logger.info(f"Bot {bot.name} ({bot_id}) polling exited normally")
+                        break
                     except ApiTelegramException as e:
                         error_msg = str(e)
                         if "conflict" in error_msg.lower() or "terminated by other getUpdates" in error_msg.lower():
                             logger.warning(f"Bot {bot.name} ({bot_id}) conflict: Another instance is already running this bot.")
-                            # Mark as not running
-                            if bot_id in self.bots:
-                                self.bots[bot_id].is_running = False
-                                self._save_data()
-                            if bot_id in self.running_bots:
-                                del self.running_bots[bot_id]
                             break
                         else:
                             logger.error(f"Telegram API error in bot polling {bot_id}: {e}")
@@ -375,7 +379,6 @@ class BotService:
                             if retry_count < max_retries:
                                 wait_time = min(2 ** retry_count, 30)  # Exponential backoff, max 30 seconds
                                 logger.info(f"Retrying bot {bot.name} ({bot_id}) in {wait_time} seconds...")
-                                import time
                                 time.sleep(wait_time)
                             else:
                                 logger.error(f"Max retries reached for bot {bot.name} ({bot_id}). Stopping.")
@@ -384,12 +387,16 @@ class BotService:
                         logger.info(f"Bot {bot.name} ({bot_id}) stopped by user")
                         break
                     except Exception as e:
+                        error_str = str(e).lower()
+                        # Ignore "Break infinity polling" errors - these are expected when stopping
+                        if "break infinity polling" in error_str or "polling exited" in error_str:
+                            logger.debug(f"Bot {bot.name} ({bot_id}) polling stopped (expected)")
+                            break
                         logger.error(f"Unexpected error in bot thread {bot_id}: {e}", exc_info=True)
                         retry_count += 1
                         if retry_count < max_retries:
                             wait_time = min(2 ** retry_count, 30)  # Exponential backoff, max 30 seconds
                             logger.info(f"Retrying bot {bot.name} ({bot_id}) in {wait_time} seconds...")
-                            import time
                             time.sleep(wait_time)
                         else:
                             logger.error(f"Max retries reached for bot {bot.name} ({bot_id}). Stopping.")
@@ -449,11 +456,20 @@ class BotService:
         if bot_id in self.running_bots:
             try:
                 tb = self.running_bots[bot_id]
-                tb.stop_polling()
+                # Remove from running_bots first to signal the polling loop to exit
                 del self.running_bots[bot_id]
+                # Mark as not running
                 if bot_id in self.bots:
                     self.bots[bot_id].is_running = False
                     self._save_data()
+                # Stop polling (this may raise "Break infinity polling" which is expected)
+                try:
+                    tb.stop_polling()
+                except Exception as e:
+                    # Ignore "Break infinity polling" errors - these are expected
+                    error_str = str(e).lower()
+                    if "break infinity polling" not in error_str and "polling exited" not in error_str:
+                        logger.warning(f"Error stopping polling for bot {bot_id}: {e}")
                 logger.info(f"Stopped bot: {bot_id}")
                 return True
             except Exception as e:
