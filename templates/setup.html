@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setup - TG Reactor Bot Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/setup.css') }}">
+    <style>
+        html, body {
+            background: #ffffff !important;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+        }
+        body {
+            align-items: stretch !important;
+            justify-content: stretch !important;
+        }
+    </style>
+</head>
+<body class="setup-page">
+    <div class="auth-container">
+        <div class="setup-card">
+            <div class="setup-content">
+            <!-- Step 1: Module Installation -->
+            <div id="step1" class="setup-step active">
+                <div id="startSetupContainer" style="margin-bottom: 60px; padding-left: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 50vh;">
+                    <h1 style="font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 40px; text-align: center;">TG Reactor Bot Manager Setup</h1>
+                    <button id="startSetupBtn" class="btn btn-primary" style="padding: 16px 32px; font-size: 16px; min-width: 200px; border-radius: 0;">
+                        <i class="fas fa-play"></i> Start Setup
+                    </button>
+                </div>
+                
+                <div id="modulesList" class="modules-list" style="display: none;">
+                    <div class="module-item">
+                        <div class="module-info">
+                            <span class="module-name">Flask</span>
+                            <span class="module-status" id="status-flask">
+                                <i class="fas fa-spinner fa-spin"></i> Checking...
+                            </span>
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="installModule('flask')" id="btn-flask" style="display: none;">
+                            <i class="fas fa-download"></i> Install
+                        </button>
+                    </div>
+                    
+                    <div class="module-item">
+                        <div class="module-info">
+                            <span class="module-name">Flask-CORS</span>
+                            <span class="module-status" id="status-flask-cors">
+                                <i class="fas fa-spinner fa-spin"></i> Checking...
+                            </span>
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="installModule('flask-cors')" id="btn-flask-cors" style="display: none;">
+                            <i class="fas fa-download"></i> Install
+                        </button>
+                    </div>
+                    
+                    <div class="module-item">
+                        <div class="module-info">
+                            <span class="module-name">Python-Telegram-Bot</span>
+                            <span class="module-status" id="status-python-telegram-bot">
+                                <i class="fas fa-spinner fa-spin"></i> Checking...
+                            </span>
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="installModule('python-telegram-bot')" id="btn-python-telegram-bot" style="display: none;">
+                            <i class="fas fa-download"></i> Install
+                        </button>
+                    </div>
+                    
+                    <div class="module-item">
+                        <div class="module-info">
+                            <span class="module-name">Python-Dotenv</span>
+                            <span class="module-status" id="status-python-dotenv">
+                                <i class="fas fa-spinner fa-spin"></i> Checking...
+                            </span>
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="installModule('python-dotenv')" id="btn-python-dotenv" style="display: none;">
+                            <i class="fas fa-download"></i> Install
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="setup-actions" id="setupActions" style="display: none;">
+                    <button class="btn btn-secondary" onclick="nextStep()" id="nextStepBtn" style="display: none;">
+                        Next Step <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Step 2: Admin Account -->
+            <div id="step2" class="setup-step">
+                <h2><i class="fas fa-user-shield"></i> Create Admin Account</h2>
+                <p class="step-description">Create your administrator account to access the admin panel.</p>
+                
+                <div id="setupErrorMessage" class="error-message" style="display: none;"></div>
+                
+                <form id="setupForm" class="auth-form">
+                    <div class="form-group">
+                        <label for="setupUsername">Username</label>
+                        <input type="text" id="setupUsername" name="username" required autofocus>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="setupPassword">Password</label>
+                        <input type="password" id="setupPassword" name="password" required>
+                        <small>Minimum 6 characters</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="confirmPassword">Confirm Password</label>
+                        <input type="password" id="confirmPassword" name="confirm_password" required>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary btn-block">
+                        <span class="btn-text">Complete Setup</span>
+                        <span class="btn-loader" style="display: none;">
+                            <i class="fas fa-spinner fa-spin"></i>
+                        </span>
+                    </button>
+                </form>
+            </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+    <script src="{{ url_for('static', filename='js/setup.js') }}"></script>
+    
+    <!-- Footer -->
+    <footer style="text-align: center; padding: 20px; position: fixed; bottom: 0; left: 0; right: 0; border-top: 2px solid var(--text); background: #ffffff; z-index: 100;">
+        <p style="margin: 0; color: var(--text); font-size: 14px;">
+            © 2024 TG Reactor Bot Manager. Built by <a href="https://basirulakhlak.tech/" target="_blank" rel="noopener noreferrer" style="color: var(--text); text-decoration: underline; font-weight: 600;">Basirul Akhlak</a>
+        </p>
+    </footer>
+</body>
+</html>

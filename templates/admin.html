@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - TG Reactor Bot Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow-x: hidden;
+            background: #ffffff !important;
+        }
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            background-color: #ffffff !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-robot"></i> TG Reactor Bot Manager</h1>
+            </div>
+            <div class="header-actions">
+                <div class="status-badge" id="serverStatus">
+                    <i class="fas fa-circle"></i> <span>Loading...</span>
+                </div>
+                <a href="/logout" class="btn btn-sm btn-secondary">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
+        </header>
+
+        <!-- Stats Dashboard -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon" style="background: #007AFF;">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <div class="stat-info">
+                    <h3 id="totalBots">0</h3>
+                    <p>Total Bots</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="background: #34C759;">
+                    <i class="fas fa-play-circle"></i>
+                </div>
+                <div class="stat-info">
+                    <h3 id="runningBots">0</h3>
+                    <p>Running Bots</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="background: #FF9500;">
+                    <i class="fas fa-pause-circle"></i>
+                </div>
+                <div class="stat-info">
+                    <h3 id="stoppedBots">0</h3>
+                    <p>Stopped Bots</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="background: #AF52DE;">
+                    <i class="fas fa-bullhorn"></i>
+                </div>
+                <div class="stat-info">
+                    <h3 id="totalChannels">0</h3>
+                    <p>Channels</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="actions-card">
+            <h2><i class="fas fa-bolt"></i> Quick Actions</h2>
+            <div class="actions-grid">
+                <button class="btn btn-success" onclick="openAddBotModal()">
+                    <i class="fas fa-plus"></i> Add Bot
+                </button>
+                <button class="btn btn-purple" onclick="openAddChannelModal()">
+                    <i class="fas fa-plus"></i> Add Channel
+                </button>
+                <button class="btn btn-primary" onclick="startAllBots()">
+                    <i class="fas fa-play"></i> Start All Bots
+                </button>
+                <button class="btn btn-danger" onclick="stopAllBots()">
+                    <i class="fas fa-stop"></i> Stop All Bots
+                </button>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('bots')">
+                <i class="fas fa-robot"></i> Bots
+            </button>
+            <button class="tab-btn" onclick="switchTab('channels')">
+                <i class="fas fa-bullhorn"></i> Channels
+            </button>
+        </div>
+
+        <!-- Bots Tab -->
+        <div id="botsTab" class="tab-content active">
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Status</th>
+                            <th>Token Preview</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="botsTableBody">
+                        <tr>
+                            <td colspan="4" class="empty-state">Loading bots...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Channels Tab -->
+        <div id="channelsTab" class="tab-content">
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Channel ID</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="channelsTableBody">
+                        <tr>
+                            <td colspan="3" class="empty-state">Loading channels...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Bot Modal -->
+    <div id="addBotModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-plus"></i> Add New Bot</h2>
+                <button class="close-btn" onclick="closeModal('addBotModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="max-width: 600px; margin: 0 auto; width: 100%;">
+                    <div class="form-group">
+                        <label for="botName">Bot Name (Optional)</label>
+                        <input type="text" id="botName" placeholder="My Bot" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label for="botToken">Bot Token *</label>
+                        <input type="password" id="botToken" placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz" class="form-input">
+                        <small>Get your bot token from @BotFather on Telegram</small>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('addBotModal')">Cancel</button>
+                <button class="btn btn-success" onclick="addBot()">Add Bot</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Channel Modal -->
+    <div id="addChannelModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-plus"></i> Add New Channel</h2>
+                <button class="close-btn" onclick="closeModal('addChannelModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="max-width: 600px; margin: 0 auto; width: 100%;">
+                    <div class="form-group">
+                        <label for="channelName">Channel Name (Optional)</label>
+                        <input type="text" id="channelName" placeholder="My Channel" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label for="channelId">Channel ID *</label>
+                        <input type="text" id="channelId" placeholder="@mychannel or -1001234567890" class="form-input">
+                        <small>Enter channel username (e.g., @mychannel) or channel ID</small>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('addChannelModal')">Cancel</button>
+                <button class="btn btn-purple" onclick="addChannel()">Add Channel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    
+    <!-- Footer -->
+    <footer style="text-align: center; padding: 20px; margin-top: 40px; border-top: 2px solid var(--text); background: #ffffff;">
+        <p style="margin: 0; color: var(--text); font-size: 14px;">
+            © 2026 TG Reactor Bot Manager. Built by <a href="https://basirulakhlak.tech/" target="_blank" rel="noopener noreferrer" style="color: var(--text); text-decoration: underline; font-weight: 600;">Basirul Akhlak</a>
+        </p>
+    </footer>
+</body>
+</html>
+
