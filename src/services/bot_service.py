@@ -291,10 +291,10 @@ class BotService:
                 
                 logger.info(f"Channel {matched_channel.name} ({str(matched_channel.channel_id)}) matched, adding reactions")
                 
-                # Mixed reaction emojis
+                # Mixed reaction emojis (only Telegram-supported reactions)
+                # Telegram supports: 👍, 👎, ❤️, 🔥, ⭐, 💯, 🚀
                 reaction_emojis = [
-                    "👍", "❤️", "🔥", "🎉", "💯", "🚀", "⭐", "💪",
-                    "👏", "😍", "🤩", "🎯", "✨", "💎", "🏆", "🎊"
+                    "👍", "❤️", "🔥", "⭐", "💯", "🚀"
                 ]
                 
                 # Select 1-3 random reactions
