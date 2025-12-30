@@ -229,9 +229,10 @@ class BotService:
                 """Echo handler for text messages in private chats."""
                 tb.reply_to(message, f'You said: {message.text}')
             
-            @tb.channel_post_handler(func=lambda m: True)
+            # Handler for all channel post types including GIFs (animation) and stickers
+            @tb.channel_post_handler(content_types=['text', 'photo', 'video', 'sticker', 'animation', 'document', 'audio', 'voice', 'video_note'])
             def handle_channel_post(message):
-                """React to all types of posts (text, photo, video, sticker, etc.) in monitored channels."""
+                """React to all types of posts (text, photo, video, sticker, GIF/animation, etc.) in monitored channels."""
                 chat = message.chat
                 chat_id = chat.id
                 message_id = message.message_id
@@ -239,9 +240,32 @@ class BotService:
                 # Call helper function to add reactions
                 _add_reactions_to_channel_post(chat_id, message_id, chat_username, bot)
             
-            @tb.edited_channel_post_handler(func=lambda m: True)
+            # Fallback handler for any other content types not explicitly listed
+            @tb.channel_post_handler(func=lambda m: True)
+            def handle_channel_post_fallback(message):
+                """Fallback handler for any channel post types not explicitly listed."""
+                chat = message.chat
+                chat_id = chat.id
+                message_id = message.message_id
+                chat_username = getattr(chat, 'username', None)
+                # Call helper function to add reactions
+                _add_reactions_to_channel_post(chat_id, message_id, chat_username, bot)
+            
+            # Handler for edited channel posts
+            @tb.edited_channel_post_handler(content_types=['text', 'photo', 'video', 'sticker', 'animation', 'document', 'audio', 'voice', 'video_note'])
             def handle_edited_channel_post(message):
                 """React to edited posts in monitored channels."""
+                chat = message.chat
+                chat_id = chat.id
+                message_id = message.message_id
+                chat_username = getattr(chat, 'username', None)
+                # Call helper function to add reactions
+                _add_reactions_to_channel_post(chat_id, message_id, chat_username, bot)
+            
+            # Fallback for edited posts
+            @tb.edited_channel_post_handler(func=lambda m: True)
+            def handle_edited_channel_post_fallback(message):
+                """Fallback handler for edited channel posts."""
                 chat = message.chat
                 chat_id = chat.id
                 message_id = message.message_id
