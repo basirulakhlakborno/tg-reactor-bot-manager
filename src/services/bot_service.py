@@ -350,30 +350,58 @@ class BotService:
                         logger.warning(f"Bot may not have permission to react in channel {matched_channel.name}. Make sure the bot is an admin with reaction permissions.")
             
             def run_bot():
-                """Run the bot in a thread."""
-                try:
-                    logger.info(f"Starting polling for bot {bot.name} ({bot_id})")
-                    tb.infinity_polling(none_stop=True, interval=0, timeout=20)
-                except ApiTelegramException as e:
-                    error_msg = str(e)
-                    if "conflict" in error_msg.lower() or "terminated by other getUpdates" in error_msg.lower():
-                        logger.warning(f"Bot {bot.name} ({bot_id}) conflict: Another instance is already running this bot.")
-                        # Mark as not running
-                        if bot_id in self.bots:
-                            self.bots[bot_id].is_running = False
-                            self._save_data()
-                        if bot_id in self.running_bots:
-                            del self.running_bots[bot_id]
-                    else:
-                        logger.error(f"Error in bot polling {bot_id}: {e}")
-                except Exception as e:
-                    logger.error(f"Error in bot thread {bot_id}: {e}")
-                    # Mark as not running
-                    if bot_id in self.bots:
-                        self.bots[bot_id].is_running = False
-                        self._save_data()
-                    if bot_id in self.running_bots:
-                        del self.running_bots[bot_id]
+                """Run the bot in a thread with automatic restart on failure."""
+                max_retries = 5
+                retry_count = 0
+                
+                while retry_count < max_retries:
+                    try:
+                        logger.info(f"Starting polling for bot {bot.name} ({bot_id}) - Attempt {retry_count + 1}/{max_retries}")
+                        tb.infinity_polling(none_stop=True, interval=0, timeout=20, long_polling_timeout=20)
+                    except ApiTelegramException as e:
+                        error_msg = str(e)
+                        if "conflict" in error_msg.lower() or "terminated by other getUpdates" in error_msg.lower():
+                            logger.warning(f"Bot {bot.name} ({bot_id}) conflict: Another instance is already running this bot.")
+                            # Mark as not running
+                            if bot_id in self.bots:
+                                self.bots[bot_id].is_running = False
+                                self._save_data()
+                            if bot_id in self.running_bots:
+                                del self.running_bots[bot_id]
+                            break
+                        else:
+                            logger.error(f"Telegram API error in bot polling {bot_id}: {e}")
+                            retry_count += 1
+                            if retry_count < max_retries:
+                                wait_time = min(2 ** retry_count, 30)  # Exponential backoff, max 30 seconds
+                                logger.info(f"Retrying bot {bot.name} ({bot_id}) in {wait_time} seconds...")
+                                import time
+                                time.sleep(wait_time)
+                            else:
+                                logger.error(f"Max retries reached for bot {bot.name} ({bot_id}). Stopping.")
+                                break
+                    except KeyboardInterrupt:
+                        logger.info(f"Bot {bot.name} ({bot_id}) stopped by user")
+                        break
+                    except Exception as e:
+                        logger.error(f"Unexpected error in bot thread {bot_id}: {e}", exc_info=True)
+                        retry_count += 1
+                        if retry_count < max_retries:
+                            wait_time = min(2 ** retry_count, 30)  # Exponential backoff, max 30 seconds
+                            logger.info(f"Retrying bot {bot.name} ({bot_id}) in {wait_time} seconds...")
+                            import time
+                            time.sleep(wait_time)
+                        else:
+                            logger.error(f"Max retries reached for bot {bot.name} ({bot_id}). Stopping.")
+                            break
+                
+                # Mark as not running if we exit the loop
+                if bot_id in self.bots:
+                    self.bots[bot_id].is_running = False
+                    self._save_data()
+                if bot_id in self.running_bots:
+                    del self.running_bots[bot_id]
+                logger.info(f"Bot {bot.name} ({bot_id}) polling stopped")
             
             # Start bot in a separate thread
             thread = threading.Thread(target=run_bot, daemon=True)
