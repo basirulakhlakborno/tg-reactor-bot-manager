@@ -4,6 +4,7 @@ import logging
 import threading
 import random
 import requests
+import time
 from typing import Dict, Optional
 from datetime import datetime
 
@@ -326,46 +327,87 @@ class BotService:
                 selected_reactions = random.sample(reaction_emojis, min(num_reactions, len(reaction_emojis)))
                 
                 try:
-                    # Add reactions to the post using direct Telegram API call
-                    # Send reactions one at a time (Telegram API may have limitations)
+                    # Add reactions to the post using direct Telegram Bot API call
+                    # Send all reactions in a single call (Bot API supports multiple reactions)
                     url = f"https://api.telegram.org/bot{bot.token}/setMessageReaction"
                     
-                    successful_reactions = []
-                    for emoji in selected_reactions:
-                        try:
-                            # Format reaction as ReactionType object
-                            payload = {
-                                "chat_id": chat_id,
-                                "message_id": message_id,
-                                "reaction": [{"type": "emoji", "emoji": emoji}]
-                            }
-                            
-                            response = requests.post(url, json=payload, timeout=10)
-                            response.raise_for_status()
-                            result = response.json()
-                            
-                            if result.get('ok', False):
-                                successful_reactions.append(emoji)
-                            else:
-                                error_desc = result.get('description', 'Unknown error')
-                                logger.warning(f"Failed to add reaction {emoji}: {error_desc}")
-                        except requests.exceptions.HTTPError as e:
-                            if e.response.status_code == 400:
-                                try:
-                                    error_data = e.response.json()
-                                    error_desc = error_data.get('description', str(e))
-                                    logger.warning(f"Failed to add reaction {emoji}: {error_desc}")
-                                except:
-                                    logger.warning(f"Failed to add reaction {emoji}: {e}")
-                            else:
-                                logger.warning(f"HTTP error adding reaction {emoji}: {e}")
-                        except Exception as e:
-                            logger.warning(f"Error adding reaction {emoji}: {e}")
+                    # Format all reactions as an array of ReactionType objects
+                    reaction_array = [{"type": "emoji", "emoji": emoji} for emoji in selected_reactions]
                     
-                    if successful_reactions:
-                        logger.info(f"Added reactions {successful_reactions} to post {message_id} in channel {matched_channel.name} ({chat_id})")
-                    else:
-                        logger.warning(f"Failed to add any reactions to post {message_id} in channel {matched_channel.name} ({chat_id})")
+                    payload = {
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "reaction": reaction_array
+                    }
+                    
+                    try:
+                        response = requests.post(url, json=payload, timeout=10)
+                        response.raise_for_status()
+                        result = response.json()
+                        
+                        if result.get('ok', False):
+                            logger.info(f"Added reactions {selected_reactions} to post {message_id} in channel {matched_channel.name} ({chat_id})")
+                        else:
+                            error_desc = result.get('description', 'Unknown error')
+                            logger.warning(f"Failed to add reactions {selected_reactions}: {error_desc}")
+                            # Fallback: try sending reactions one at a time if batch fails
+                            logger.info(f"Attempting to add reactions one at a time as fallback...")
+                            successful_reactions = []
+                            for emoji in selected_reactions:
+                                try:
+                                    single_payload = {
+                                        "chat_id": chat_id,
+                                        "message_id": message_id,
+                                        "reaction": [{"type": "emoji", "emoji": emoji}]
+                                    }
+                                    single_response = requests.post(url, json=single_payload, timeout=10)
+                                    single_response.raise_for_status()
+                                    single_result = single_response.json()
+                                    if single_result.get('ok', False):
+                                        successful_reactions.append(emoji)
+                                        # Small delay between reactions to avoid rate limiting
+                                        time.sleep(0.2)
+                                    else:
+                                        error_desc = single_result.get('description', 'Unknown error')
+                                        logger.warning(f"Failed to add reaction {emoji}: {error_desc}")
+                                except Exception as e:
+                                    logger.warning(f"Error adding reaction {emoji}: {e}")
+                            
+                            if successful_reactions:
+                                logger.info(f"Added reactions {successful_reactions} to post {message_id} in channel {matched_channel.name} ({chat_id})")
+                            else:
+                                logger.warning(f"Failed to add any reactions to post {message_id} in channel {matched_channel.name} ({chat_id})")
+                    except requests.exceptions.HTTPError as e:
+                        if e.response.status_code == 400:
+                            try:
+                                error_data = e.response.json()
+                                error_desc = error_data.get('description', str(e))
+                                logger.warning(f"Failed to add reactions {selected_reactions}: {error_desc}")
+                                # Check if it's a "too many reactions" error - try fewer reactions
+                                if "too many" in error_desc.lower() or "reactions_uniq_max" in error_desc.lower():
+                                    logger.info(f"Too many reactions, trying with fewer reactions...")
+                                    # Try with just 1 reaction
+                                    if len(selected_reactions) > 1:
+                                        single_reaction = selected_reactions[0]
+                                        single_payload = {
+                                            "chat_id": chat_id,
+                                            "message_id": message_id,
+                                            "reaction": [{"type": "emoji", "emoji": single_reaction}]
+                                        }
+                                        try:
+                                            single_response = requests.post(url, json=single_payload, timeout=10)
+                                            single_response.raise_for_status()
+                                            single_result = single_response.json()
+                                            if single_result.get('ok', False):
+                                                logger.info(f"Added reaction {single_reaction} to post {message_id} in channel {matched_channel.name} ({chat_id})")
+                                        except Exception as e2:
+                                            logger.warning(f"Failed to add single reaction {single_reaction}: {e2}")
+                            except:
+                                logger.warning(f"Failed to add reactions {selected_reactions}: {e}")
+                        else:
+                            logger.warning(f"HTTP error adding reactions {selected_reactions}: {e}")
+                    except Exception as e:
+                        logger.warning(f"Error adding reactions {selected_reactions}: {e}")
                 except Exception as e:
                     error_msg = str(e).lower()
                     logger.error(f"Error adding reaction to post {message_id} in channel {chat_id}: {e}")
