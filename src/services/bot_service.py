@@ -219,6 +219,12 @@ class BotService:
             tb._bot_id = bot_id
             tb._bot_service = self
             
+            # Log all incoming updates for debugging
+            @tb.message_handler(func=lambda m: True)
+            def log_all_messages(message):
+                """Log all incoming messages for debugging."""
+                logger.debug(f"Received message update: chat_id={message.chat.id}, chat_type={message.chat.type}, chat_title={getattr(message.chat, 'title', None)}, username={getattr(message.chat, 'username', None)}, message_id={message.message_id}, content_type={message.content_type}")
+            
             @tb.message_handler(commands=['start'])
             def handle_start(message):
                 """Handle /start command in private chats."""
