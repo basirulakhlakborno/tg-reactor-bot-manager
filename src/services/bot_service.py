@@ -234,12 +234,20 @@ class BotService:
             @tb.channel_post_handler(func=lambda m: True)
             def handle_channel_post(message):
                 """React to all types of posts in monitored channels."""
-                chat = message.chat
-                chat_id = chat.id
-                message_id = message.message_id
-                chat_username = getattr(chat, 'username', None)
-                # Call helper function to add reactions
-                _add_reactions_to_channel_post(chat_id, message_id, chat_username, bot)
+                try:
+                    chat = message.chat
+                    chat_id = chat.id
+                    message_id = message.message_id
+                    chat_username = getattr(chat, 'username', None)
+                    chat_title = getattr(chat, 'title', None)
+                    
+                    logger.info(f"Received channel post in chat_id={chat_id}, username={chat_username}, title={chat_title}, message_id={message_id}")
+                    logger.info(f"Monitored channels: {[str(ch.channel_id) for ch in self.channels.values()]}")
+                    
+                    # Call helper function to add reactions
+                    _add_reactions_to_channel_post(chat_id, message_id, chat_username, bot)
+                except Exception as e:
+                    logger.error(f"Error in handle_channel_post: {e}", exc_info=True)
             
             # Handler for edited channel posts - react to whatever is edited
             @tb.edited_channel_post_handler(func=lambda m: True)
@@ -255,12 +263,16 @@ class BotService:
             def _add_reactions_to_channel_post(chat_id, message_id, chat_username, bot):
                 """Helper function to add reactions to channel posts."""
                 
+                logger.info(f"_add_reactions_to_channel_post called: chat_id={chat_id}, message_id={message_id}, username={chat_username}")
+                logger.info(f"Total channels in monitored list: {len(self.channels)}")
+                
                 # Check if this channel is in our monitored list
                 channel_found = False
                 matched_channel = None
                 
                 for channel in self.channels.values():
                     channel_id_str = str(channel.channel_id).strip()
+                    logger.debug(f"Checking channel: {channel.name}, channel_id={channel_id_str}, against chat_id={chat_id}")
                     
                     # Check numeric ID match (handle negative IDs)
                     try:
@@ -268,17 +280,21 @@ class BotService:
                         if channel_id_int == chat_id:
                             channel_found = True
                             matched_channel = channel
+                            logger.info(f"Matched channel by numeric ID: {channel.name} ({channel_id_int} == {chat_id})")
                             break
                     except (ValueError, TypeError):
+                        logger.debug(f"Could not convert channel_id '{channel_id_str}' to int")
                         pass
                     
                     # Check username match (handle @ prefix)
                     if chat_username:
                         channel_username = channel_id_str.lstrip('@').lower()
                         chat_username_lower = chat_username.lower()
+                        logger.debug(f"Comparing usernames: '{channel_username}' == '{chat_username_lower}'")
                         if channel_username == chat_username_lower:
                             channel_found = True
                             matched_channel = channel
+                            logger.info(f"Matched channel by username: {channel.name} ({channel_username} == {chat_username_lower})")
                             break
                     
                     # Also check string match for usernames with @
@@ -286,10 +302,12 @@ class BotService:
                         if chat_username and channel_id_str.lower() == f"@{chat_username}".lower():
                             channel_found = True
                             matched_channel = channel
+                            logger.info(f"Matched channel by @username: {channel.name} ({channel_id_str} == @{chat_username})")
                             break
                 
                 if not channel_found:
-                    logger.debug(f"Channel {chat_id} ({chat_username or 'no username'}) not in monitored list, skipping reaction")
+                    logger.warning(f"Channel {chat_id} ({chat_username or 'no username'}) not in monitored list, skipping reaction")
+                    logger.warning(f"Available channels: {[(ch.name, str(ch.channel_id)) for ch in self.channels.values()]}")
                     return
                 
                 logger.info(f"Channel {matched_channel.name} ({str(matched_channel.channel_id)}) matched, adding reactions")
