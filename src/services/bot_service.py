@@ -4,7 +4,6 @@ import logging
 import threading
 import random
 import requests
-import time
 from typing import Dict, Optional
 from datetime import datetime
 
@@ -219,12 +218,6 @@ class BotService:
             tb._bot_id = bot_id
             tb._bot_service = self
             
-            # Log all incoming updates for debugging
-            @tb.message_handler(func=lambda m: True)
-            def log_all_messages(message):
-                """Log all incoming messages for debugging."""
-                logger.debug(f"Received message update: chat_id={message.chat.id}, chat_type={message.chat.type}, chat_title={getattr(message.chat, 'title', None)}, username={getattr(message.chat, 'username', None)}, message_id={message.message_id}, content_type={message.content_type}")
-            
             @tb.message_handler(commands=['start'])
             def handle_start(message):
                 """Handle /start command in private chats."""
@@ -236,41 +229,13 @@ class BotService:
                 """Echo handler for text messages in private chats."""
                 tb.reply_to(message, f'You said: {message.text}')
             
-            # Handler for all channel posts - react to whatever is posted regardless of type
             @tb.channel_post_handler(func=lambda m: True)
             def handle_channel_post(message):
-                """React to all types of posts in monitored channels."""
-                try:
-                    chat = message.chat
-                    chat_id = chat.id
-                    message_id = message.message_id
-                    chat_username = getattr(chat, 'username', None)
-                    chat_title = getattr(chat, 'title', None)
-                    
-                    logger.info(f"Received channel post in chat_id={chat_id}, username={chat_username}, title={chat_title}, message_id={message_id}")
-                    logger.info(f"Monitored channels: {[str(ch.channel_id) for ch in self.channels.values()]}")
-                    
-                    # Call helper function to add reactions
-                    _add_reactions_to_channel_post(chat_id, message_id, chat_username, bot)
-                except Exception as e:
-                    logger.error(f"Error in handle_channel_post: {e}", exc_info=True)
-            
-            # Handler for edited channel posts - react to whatever is edited
-            @tb.edited_channel_post_handler(func=lambda m: True)
-            def handle_edited_channel_post(message):
-                """React to edited posts in monitored channels."""
+                """React to posts in monitored channels with mixed reactions."""
                 chat = message.chat
                 chat_id = chat.id
                 message_id = message.message_id
                 chat_username = getattr(chat, 'username', None)
-                # Call helper function to add reactions
-                _add_reactions_to_channel_post(chat_id, message_id, chat_username, bot)
-            
-            def _add_reactions_to_channel_post(chat_id, message_id, chat_username, bot):
-                """Helper function to add reactions to channel posts."""
-                
-                logger.info(f"_add_reactions_to_channel_post called: chat_id={chat_id}, message_id={message_id}, username={chat_username}")
-                logger.info(f"Total channels in monitored list: {len(self.channels)}")
                 
                 # Check if this channel is in our monitored list
                 channel_found = False
@@ -278,7 +243,6 @@ class BotService:
                 
                 for channel in self.channels.values():
                     channel_id_str = str(channel.channel_id).strip()
-                    logger.debug(f"Checking channel: {channel.name}, channel_id={channel_id_str}, against chat_id={chat_id}")
                     
                     # Check numeric ID match (handle negative IDs)
                     try:
@@ -286,21 +250,17 @@ class BotService:
                         if channel_id_int == chat_id:
                             channel_found = True
                             matched_channel = channel
-                            logger.info(f"Matched channel by numeric ID: {channel.name} ({channel_id_int} == {chat_id})")
                             break
                     except (ValueError, TypeError):
-                        logger.debug(f"Could not convert channel_id '{channel_id_str}' to int")
                         pass
                     
                     # Check username match (handle @ prefix)
                     if chat_username:
                         channel_username = channel_id_str.lstrip('@').lower()
                         chat_username_lower = chat_username.lower()
-                        logger.debug(f"Comparing usernames: '{channel_username}' == '{chat_username_lower}'")
                         if channel_username == chat_username_lower:
                             channel_found = True
                             matched_channel = channel
-                            logger.info(f"Matched channel by username: {channel.name} ({channel_username} == {chat_username_lower})")
                             break
                     
                     # Also check string match for usernames with @
@@ -308,175 +268,88 @@ class BotService:
                         if chat_username and channel_id_str.lower() == f"@{chat_username}".lower():
                             channel_found = True
                             matched_channel = channel
-                            logger.info(f"Matched channel by @username: {channel.name} ({channel_id_str} == @{chat_username})")
                             break
                 
                 if not channel_found:
-                    logger.warning(f"Channel {chat_id} ({chat_username or 'no username'}) not in monitored list, skipping reaction")
-                    logger.warning(f"Available channels: {[(ch.name, str(ch.channel_id)) for ch in self.channels.values()]}")
+                    logger.debug(f"Channel {chat_id} ({chat_username or 'no username'}) not in monitored list, skipping reaction")
                     return
                 
-                logger.info(f"Channel {matched_channel.name} ({str(matched_channel.channel_id)}) matched, adding reactions")
+                logger.info(f"Channel {matched_channel.name} ({str(matched_channel.channel_id)}) matched, adding reaction")
                 
-                # Mixed reaction emojis (only Telegram-supported reactions)
-                # Telegram supports: 👍, 👎, ❤️, 🔥, ⭐, 💯, 🚀
-                reaction_emojis = [
-                    "👍", "❤️", "🔥", "⭐", "💯", "🚀"
-                ]
+                # Single reaction emoji (to avoid REACTIONS_TOO_MANY error)
+                reaction_emojis = ["❤️", "🔥", "🎉", "👍"]
                 
-                # Select 1-3 random reactions
-                num_reactions = random.randint(1, 3)
-                selected_reactions = random.sample(reaction_emojis, min(num_reactions, len(reaction_emojis)))
+                # Select just 1 random reaction
+                selected_reactions = [random.choice(reaction_emojis)]
                 
                 try:
-                    # Add reactions to the post using direct Telegram Bot API call
-                    # Send all reactions in a single call (Bot API supports multiple reactions)
+                    # Add reactions to the post using direct Telegram API call
+                    # Format reactions as list of ReactionTypeEmoji objects
+                    reactions = [{"type": "emoji", "emoji": emoji} for emoji in selected_reactions]
+                    
+                    # Make direct API call to Telegram
                     url = f"https://api.telegram.org/bot{bot.token}/setMessageReaction"
-                    
-                    # Format all reactions as an array of ReactionType objects
-                    reaction_array = [{"type": "emoji", "emoji": emoji} for emoji in selected_reactions]
-                    
                     payload = {
                         "chat_id": chat_id,
                         "message_id": message_id,
-                        "reaction": reaction_array
+                        "reaction": reactions,
+                        "is_big": False
                     }
                     
+                    response = requests.post(url, json=payload, timeout=10)
+                    
+                    # Parse response to get detailed error info
                     try:
-                        response = requests.post(url, json=payload, timeout=10)
-                        response.raise_for_status()
                         result = response.json()
+                    except:
+                        result = {"ok": False, "description": response.text}
+                    
+                    # Check response status
+                    if response.status_code != 200 or not result.get('ok', False):
+                        error_desc = result.get('description', f'HTTP {response.status_code}')
                         
-                        if result.get('ok', False):
-                            logger.info(f"Added reactions {selected_reactions} to post {message_id} in channel {matched_channel.name} ({chat_id})")
+                        # Check for specific permission errors
+                        error_lower = error_desc.lower()
+                        if "not enough rights" in error_lower or "forbidden" in error_lower:
+                            logger.warning(f"Bot lacks admin permissions in channel {matched_channel.name} ({chat_id}). Skipping reactions.")
+                        elif "reactions are unavailable" in error_lower or "not available" in error_lower:
+                            logger.warning(f"Reactions are not enabled in channel {matched_channel.name} ({chat_id}).")
                         else:
-                            error_desc = result.get('description', 'Unknown error')
-                            logger.warning(f"Failed to add reactions {selected_reactions}: {error_desc}")
-                            # Fallback: try sending reactions one at a time if batch fails
-                            logger.info(f"Attempting to add reactions one at a time as fallback...")
-                            successful_reactions = []
-                            for emoji in selected_reactions:
-                                try:
-                                    single_payload = {
-                                        "chat_id": chat_id,
-                                        "message_id": message_id,
-                                        "reaction": [{"type": "emoji", "emoji": emoji}]
-                                    }
-                                    single_response = requests.post(url, json=single_payload, timeout=10)
-                                    single_response.raise_for_status()
-                                    single_result = single_response.json()
-                                    if single_result.get('ok', False):
-                                        successful_reactions.append(emoji)
-                                        # Small delay between reactions to avoid rate limiting
-                                        time.sleep(0.2)
-                                    else:
-                                        error_desc = single_result.get('description', 'Unknown error')
-                                        logger.warning(f"Failed to add reaction {emoji}: {error_desc}")
-                                except Exception as e:
-                                    logger.warning(f"Error adding reaction {emoji}: {e}")
-                            
-                            if successful_reactions:
-                                logger.info(f"Added reactions {successful_reactions} to post {message_id} in channel {matched_channel.name} ({chat_id})")
-                            else:
-                                logger.warning(f"Failed to add any reactions to post {message_id} in channel {matched_channel.name} ({chat_id})")
-                    except requests.exceptions.HTTPError as e:
-                        if e.response.status_code == 400:
-                            try:
-                                error_data = e.response.json()
-                                error_desc = error_data.get('description', str(e))
-                                logger.warning(f"Failed to add reactions {selected_reactions}: {error_desc}")
-                                # Check if it's a "too many reactions" error - try fewer reactions
-                                if "too many" in error_desc.lower() or "reactions_uniq_max" in error_desc.lower():
-                                    logger.info(f"Too many reactions, trying with fewer reactions...")
-                                    # Try with just 1 reaction
-                                    if len(selected_reactions) > 1:
-                                        single_reaction = selected_reactions[0]
-                                        single_payload = {
-                                            "chat_id": chat_id,
-                                            "message_id": message_id,
-                                            "reaction": [{"type": "emoji", "emoji": single_reaction}]
-                                        }
-                                        try:
-                                            single_response = requests.post(url, json=single_payload, timeout=10)
-                                            single_response.raise_for_status()
-                                            single_result = single_response.json()
-                                            if single_result.get('ok', False):
-                                                logger.info(f"Added reaction {single_reaction} to post {message_id} in channel {matched_channel.name} ({chat_id})")
-                                        except Exception as e2:
-                                            logger.warning(f"Failed to add single reaction {single_reaction}: {e2}")
-                            except:
-                                logger.warning(f"Failed to add reactions {selected_reactions}: {e}")
-                        else:
-                            logger.warning(f"HTTP error adding reactions {selected_reactions}: {e}")
-                    except Exception as e:
-                        logger.warning(f"Error adding reactions {selected_reactions}: {e}")
+                            logger.error(f"Failed to add reactions to post {message_id} in channel {chat_id}: {error_desc}")
+                        return
+                    
+                    logger.info(f"Added reactions {selected_reactions} to post {message_id} in channel {matched_channel.name} ({chat_id})")
+                except requests.exceptions.RequestException as e:
+                    logger.error(f"Network error adding reaction to post {message_id} in channel {chat_id}: {e}")
                 except Exception as e:
-                    error_msg = str(e).lower()
-                    logger.error(f"Error adding reaction to post {message_id} in channel {chat_id}: {e}")
-                    # Log more details for debugging
-                    if "not enough rights" in error_msg or "forbidden" in error_msg:
-                        logger.warning(f"Bot may not have permission to react in channel {matched_channel.name}. Make sure the bot is an admin with reaction permissions.")
+                    logger.error(f"Unexpected error adding reaction to post {message_id} in channel {chat_id}: {e}")
             
             def run_bot():
-                """Run the bot in a thread with automatic restart on failure."""
-                max_retries = 5
-                retry_count = 0
-                import time
-                
-                while retry_count < max_retries:
-                    # Check if bot should still be running
-                    if bot_id not in self.bots or bot_id not in self.running_bots:
-                        logger.info(f"Bot {bot.name} ({bot_id}) was removed or stopped. Exiting polling loop.")
-                        break
-                    
-                    try:
-                        logger.info(f"Starting polling for bot {bot.name} ({bot_id}) - Attempt {retry_count + 1}/{max_retries}")
-                        # Use skip_pending to avoid processing old updates
-                        tb.infinity_polling(none_stop=True, interval=0, timeout=20, long_polling_timeout=20, skip_pending=True)
-                        # If we exit polling normally (not due to exception), break
-                        logger.info(f"Bot {bot.name} ({bot_id}) polling exited normally")
-                        break
-                    except ApiTelegramException as e:
-                        error_msg = str(e)
-                        if "conflict" in error_msg.lower() or "terminated by other getUpdates" in error_msg.lower():
-                            logger.warning(f"Bot {bot.name} ({bot_id}) conflict: Another instance is already running this bot.")
-                            break
-                        else:
-                            logger.error(f"Telegram API error in bot polling {bot_id}: {e}")
-                            retry_count += 1
-                            if retry_count < max_retries:
-                                wait_time = min(2 ** retry_count, 30)  # Exponential backoff, max 30 seconds
-                                logger.info(f"Retrying bot {bot.name} ({bot_id}) in {wait_time} seconds...")
-                                time.sleep(wait_time)
-                            else:
-                                logger.error(f"Max retries reached for bot {bot.name} ({bot_id}). Stopping.")
-                                break
-                    except KeyboardInterrupt:
-                        logger.info(f"Bot {bot.name} ({bot_id}) stopped by user")
-                        break
-                    except Exception as e:
-                        error_str = str(e).lower()
-                        # Ignore "Break infinity polling" errors - these are expected when stopping
-                        if "break infinity polling" in error_str or "polling exited" in error_str:
-                            logger.debug(f"Bot {bot.name} ({bot_id}) polling stopped (expected)")
-                            break
-                        logger.error(f"Unexpected error in bot thread {bot_id}: {e}", exc_info=True)
-                        retry_count += 1
-                        if retry_count < max_retries:
-                            wait_time = min(2 ** retry_count, 30)  # Exponential backoff, max 30 seconds
-                            logger.info(f"Retrying bot {bot.name} ({bot_id}) in {wait_time} seconds...")
-                            time.sleep(wait_time)
-                        else:
-                            logger.error(f"Max retries reached for bot {bot.name} ({bot_id}). Stopping.")
-                            break
-                
-                # Mark as not running if we exit the loop
-                if bot_id in self.bots:
-                    self.bots[bot_id].is_running = False
-                    self._save_data()
-                if bot_id in self.running_bots:
-                    del self.running_bots[bot_id]
-                logger.info(f"Bot {bot.name} ({bot_id}) polling stopped")
+                """Run the bot in a thread."""
+                try:
+                    logger.info(f"Starting polling for bot {bot.name} ({bot_id}) - will only react to new messages")
+                    # skip_pending=True ensures only NEW messages after bot starts will be processed
+                    tb.infinity_polling(none_stop=True, interval=0, timeout=20, skip_pending=True)
+                except ApiTelegramException as e:
+                    error_msg = str(e)
+                    if "conflict" in error_msg.lower() or "terminated by other getUpdates" in error_msg.lower():
+                        logger.warning(f"Bot {bot.name} ({bot_id}) conflict: Another instance is already running this bot.")
+                        # Mark as not running
+                        if bot_id in self.bots:
+                            self.bots[bot_id].is_running = False
+                            self._save_data()
+                        if bot_id in self.running_bots:
+                            del self.running_bots[bot_id]
+                    else:
+                        logger.error(f"Error in bot polling {bot_id}: {e}")
+                except Exception as e:
+                    logger.error(f"Error in bot thread {bot_id}: {e}")
+                    # Mark as not running
+                    if bot_id in self.bots:
+                        self.bots[bot_id].is_running = False
+                        self._save_data()
+                    if bot_id in self.running_bots:
+                        del self.running_bots[bot_id]
             
             # Start bot in a separate thread
             thread = threading.Thread(target=run_bot, daemon=True)
@@ -524,20 +397,11 @@ class BotService:
         if bot_id in self.running_bots:
             try:
                 tb = self.running_bots[bot_id]
-                # Remove from running_bots first to signal the polling loop to exit
+                tb.stop_polling()
                 del self.running_bots[bot_id]
-                # Mark as not running
                 if bot_id in self.bots:
                     self.bots[bot_id].is_running = False
                     self._save_data()
-                # Stop polling (this may raise "Break infinity polling" which is expected)
-                try:
-                    tb.stop_polling()
-                except Exception as e:
-                    # Ignore "Break infinity polling" errors - these are expected
-                    error_str = str(e).lower()
-                    if "break infinity polling" not in error_str and "polling exited" not in error_str:
-                        logger.warning(f"Error stopping polling for bot {bot_id}: {e}")
                 logger.info(f"Stopped bot: {bot_id}")
                 return True
             except Exception as e:
